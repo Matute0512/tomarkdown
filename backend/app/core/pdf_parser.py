@@ -1,27 +1,23 @@
 import io
 
-from pypdf import PdfReader
+import pymupdf
+import pymupdf4llm
 
 
 def parse_pdf_to_markdown(file_stream: io.BytesIO) -> str:
-    """Toma un stream binario de un PDF, extrae el texto por página
-    y le da formato Markdown básico.
+    """Convierte un PDF a Markdown con pymupdf4llm.
 
-    Args:
-        file_stream (io.BytesIO): _description_
+    Preserva tablas (formato GFM), orden de lectura y párrafos. Las fórmulas
+    se conservan como glifos Unicode: pymupdf4llm no genera LaTeX.
 
-    Returns:
-        Str: _description_
+    Se usa ``page_chunks=True`` para unir las páginas en un Markdown continuo
+    y descartar los separadores de página que la librería inyecta por defecto.
     """
-    reader = PdfReader(file_stream)
-    markdown_lines = []
-
-    for i, page in enumerate(reader.pages):
-        # extra_text() puede devolver None si la página es solo una imagen
-        text = page.extract_text()
-
-        if text:
-            # Agregamos un delimitador de página como encabezado H2
-            markdown_lines.append(f"## Página {i + 1}\n\n{text.strip()}\n")
-
-    return "\n".join(markdown_lines)
+    data = file_stream.read()
+    doc = pymupdf.open(stream=data, filetype="pdf")
+    try:
+        chunks = pymupdf4llm.to_markdown(doc, page_chunks=True)
+        pages = [chunk["text"].strip() for chunk in chunks if chunk["text"].strip()]
+        return "\n\n".join(pages)
+    finally:
+        doc.close()

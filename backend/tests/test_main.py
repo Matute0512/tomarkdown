@@ -7,6 +7,8 @@ import pytest
 from docx import Document
 from httpx import AsyncClient
 from pptx import Presentation
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen.canvas import Canvas
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -32,6 +34,37 @@ def _make_sample_pptx() -> bytes:
     slide.shapes.title.text_frame.text = "Diapositiva Uno"
     slide.placeholders[1].text_frame.text = "Punto de ejemplo"
     prs.save(buffer)
+    return buffer.getvalue()
+
+
+def _make_sample_pdf_with_table() -> bytes:
+    """Genera un PDF en memoria con una tabla dibujada a mano (canvas).
+
+    reportlab.Table no sirve como fixture: su GRID no genera líneas
+    vectoriales detectables por pymupdf.find_tables(), y la conversión
+    quedaría como texto plano. Dibujando las celdas con canvas, PyMuPDF
+    detecta la tabla y pymupdf4llm la convierte a Markdown GFM.
+    """
+    buffer = io.BytesIO()
+    c = Canvas(buffer, pagesize=letter)
+
+    # Celdas 3x2: líneas verticales (columnas) y horizontales (filas).
+    col_x = [50, 120, 180, 250]
+    row_y = [760, 720, 680]
+    for x in col_x:
+        c.line(x, row_y[0], x, row_y[-1])
+    for y in row_y:
+        c.line(col_x[0], y, col_x[-1], y)
+
+    c.drawString(55, 740, "Nombre")
+    c.drawString(125, 740, "Edad")
+    c.drawString(185, 740, "Ciudad")
+    c.drawString(55, 700, "Matias")
+    c.drawString(125, 700, "30")
+    c.drawString(185, 700, "Buenos Aires")
+
+    c.showPage()
+    c.save()
     return buffer.getvalue()
 
 
@@ -67,6 +100,26 @@ async def test_convert_pdf_happy_path(client: AsyncClient) -> None:
     assert response.status_code == 200
     data = response.json()
     assert "Hola ToMarkdown" in data["markdown"]
+    assert data["token_count"] > 0
+
+
+@pytest.mark.anyio
+async def test_convert_pdf_preserves_table(client: AsyncClient) -> None:
+    pdf_bytes = _make_sample_pdf_with_table()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("tabla.pdf", pdf_bytes, "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    md = data["markdown"]
+
+    table_lines = [ln for ln in md.splitlines() if ln.strip().startswith("|")]
+    assert table_lines, "la tabla no se convirtió a GFM"
+    assert "Nombre" in table_lines[0] and "Ciudad" in table_lines[0]
+    assert "Matias" in table_lines[-1] and "Buenos Aires" in table_lines[-1]
+    assert any("---" in ln for ln in table_lines)
     assert data["token_count"] > 0
 
 
