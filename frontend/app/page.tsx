@@ -49,6 +49,8 @@ export default function ToMarkdownApp() {
     accept: {
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
+      "application/vnd.openxmlformats-officedocument.presentationml.presentation": [".pptx"],
+      "text/plain": [".txt"],
     },
     onDropRejected: () => {
       toast.error("Archivo no soportado o excede los 10MB.");
@@ -147,7 +149,7 @@ export default function ToMarkdownApp() {
             ToMarkdown<span className="text-blue-600 dark:text-blue-500">.com.ar</span>
           </h1>
           <p className="text-neutral-500 dark:text-neutral-400 text-lg">
-            Convierte tus archivos PDF y Word a Markdown al instante.
+            Convierte tus archivos PDF, Word, PowerPoint y texto a Markdown al instante.
           </p>
         </header>
 
@@ -181,7 +183,7 @@ export default function ToMarkdownApp() {
               Arrastra y suelta tu archivo aquí, o haz clic para seleccionar
             </p>
           )}
-          <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-3">Soporta .pdf y .docx (Max 10MB)</p>
+          <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-3">Soporta .pdf, .docx, .pptx y .txt (Max 10MB)</p>
         </section>
 
         <div className="flex justify-center">
