@@ -9,6 +9,7 @@ on:
     branches: [ main, develop ]
     paths:
       - 'frontend/**'
+  workflow_dispatch:
 
 jobs:
   lint-and-build:
@@ -19,10 +20,10 @@ jobs:
 
     steps:
       - name: Checkout Code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           # Usa el packageManager declarado en frontend/package.json (pnpm@10.34.5).
           # Fijar version: 9 instalaba pnpm 9, que exige un campo `packages` en
@@ -30,7 +31,7 @@ jobs:
           package_json_file: ./frontend/package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: '22'
           cache: 'pnpm'
