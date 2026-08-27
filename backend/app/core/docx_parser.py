@@ -24,11 +24,11 @@ def parse_docx_to_markdown(file_stream: io.BytesIO) -> str:
 
         style_name = style.name
 
-        if style_name.startswith('Heading 1'):
+        if style_name.startswith("Heading 1"):
             markdown_lines.append(f"# {text}\n")
-        elif style_name.startswith('Heading 2'):
+        elif style_name.startswith("Heading 2"):
             markdown_lines.append(f"## {text}\n")
-        elif style_name.startswith('Heading 3'):
+        elif style_name.startswith("Heading 3"):
             markdown_lines.append(f"### {text}\n")
         else:
             markdown_lines.append(f"{text}\n")

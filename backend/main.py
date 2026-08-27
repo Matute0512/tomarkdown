@@ -12,14 +12,14 @@ from app.services.conversion_service import (
 app = FastAPI(
     title="ToMarkdown API",
     description="API ultrarrápida para convertir PDF/DOCX a Markdown en memoria.",
-    version="1.0.0"
+    version="1.0.0",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
-        "http://192.168.182.1:3000"  # Agregamos tu IP de red local
+        "http://192.168.182.1:3000",  # Agregamos tu IP de red local
     ],
     allow_credentials=True,
     allow_methods=["POST"],
@@ -35,17 +35,19 @@ MAX_FILE_SIZE = 10 * 1024 * 1024
 
 
 @app.post("/api/v1/convert", response_model=ConversionResponse)
-async def convert_document(file: Annotated[UploadFile, File(description="Archivo a convertir")]):
+async def convert_document(
+    file: Annotated[UploadFile, File(description="Archivo a convertir")],
+):
     if not file.filename:
-        raise HTTPException(
-            status_code=400, detail="No se proporcionó ningún archivo.")
+        raise HTTPException(status_code=400, detail="No se proporcionó ningún archivo.")
 
     try:
         content = await file.read()
 
         if len(content) > MAX_FILE_SIZE:
             raise HTTPException(
-                status_code=413, detail="El archivo excede el límite de 10MB.")
+                status_code=413, detail="El archivo excede el límite de 10MB."
+            )
 
         markdown_text = await convert_file_to_markdown(file.filename, content)
         return ConversionResponse(markdown=markdown_text)
@@ -64,5 +66,5 @@ async def health_check():
     return {
         "status": "online",
         "message": "ToMarkdown API is running",
-        "docs_url": "/docs"
+        "docs_url": "/docs",
     }

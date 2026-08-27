@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* 1. Le decimos a Tailwind v4 que active el modo oscuro cuando detecte la clase .dark */
+@variant dark (&:where(.dark, .dark *));
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -12,11 +15,11 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+/* 2. Reemplazamos el @media (prefers-color-scheme: dark) por la clase .dark
+      para que las variables base también obedezcan al botón */
+.dark {
+  --background: #0a0a0a;
+  --foreground: #ededed;
 }
 
 body {
