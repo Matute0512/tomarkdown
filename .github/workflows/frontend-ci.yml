@@ -24,7 +24,10 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 9
+          # Usa el packageManager declarado en frontend/package.json (pnpm@10.34.5).
+          # Fijar version: 9 instalaba pnpm 9, que exige un campo `packages` en
+          # pnpm-workspace.yaml y fallaba con "packages field missing or empty".
+          package_json_file: ./frontend/package.json
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
