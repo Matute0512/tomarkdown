@@ -10,6 +10,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from slowapi.util import get_remote_address
 
 from app.core.config import settings
+from app.core.token_counter import count_tokens
 from app.services.conversion_service import (
     UnsupportedFormatError,
     convert_file_to_markdown,
@@ -46,6 +47,7 @@ async def rate_limit_exceeded_handler(request: Request, exc: RateLimitExceeded):
 
 class ConversionResponse(BaseModel):
     markdown: str
+    token_count: int
 
 
 @app.post("/api/v1/convert", response_model=ConversionResponse)
@@ -66,7 +68,9 @@ async def convert_document(
             )
 
         markdown_text = await convert_file_to_markdown(file.filename, content)
-        return ConversionResponse(markdown=markdown_text)
+        return ConversionResponse(
+            markdown=markdown_text, token_count=count_tokens(markdown_text)
+        )
 
     except UnsupportedFormatError as e:
         raise HTTPException(status_code=422, detail=str(e))
