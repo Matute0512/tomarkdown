@@ -29,7 +29,9 @@ export default function ToMarkdownApp() {
   const [mounted, setMounted] = useState(false);
   const { theme, setTheme, resolvedTheme } = useTheme();
 
+  // Aseguramos que el componente solo se renderice en el cliente para evitar el FOUC
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setMounted(true);
   }, []);
 
@@ -60,8 +62,10 @@ export default function ToMarkdownApp() {
       const result = await convertDocumentToMarkdown(file);
       setMarkdown(result);
       toast.success("¡Documento convertido con éxito!");
-    } catch (err: any) {
-      toast.error(err.message || "Error desconocido al procesar el archivo");
+    } catch (err) {
+      // Casteamos el error explícitamente para TypeScript
+      const error = err as Error;
+      toast.error(error.message || "Error desconocido al procesar el archivo");
     } finally {
       setIsLoading(false);
     }
@@ -70,7 +74,7 @@ export default function ToMarkdownApp() {
   const handleCopy = async () => {
     if (!markdown) return;
 
-    // 1. Intento con la API moderna (Funciona en HTTPS y localhost)
+    // 1. Intento con la API moderna
     if (navigator?.clipboard?.writeText) {
       try {
         await navigator.clipboard.writeText(markdown);
@@ -78,17 +82,16 @@ export default function ToMarkdownApp() {
         toast.success("¡Copiado al portapapeles!");
         setTimeout(() => setCopied(false), 2000);
         return;
-      } catch (err) {
-        console.error("Falló la API moderna del portapapeles: ", err);
+      } catch {
+        console.error("Falló la API moderna del portapapeles.");
       }
     }
 
-    // 2. Fallback clásico para HTTP en redes locales (ej. tu IP 192.x.x.x)
+    // 2. Fallback clásico (sin variables de error para evitar advertencias de unused-vars)
     try {
       const textArea = document.createElement("textarea");
       textArea.value = markdown;
 
-      // Evitar que el navegador haga scroll al inyectar el textarea
       textArea.style.top = "0";
       textArea.style.left = "0";
       textArea.style.position = "fixed";
@@ -108,7 +111,7 @@ export default function ToMarkdownApp() {
       } else {
         toast.error("Tu navegador bloqueó el acceso al portapapeles.");
       }
-    } catch (err) {
+    } catch {
       toast.error("Error inesperado al intentar copiar el texto.");
     }
   };
@@ -122,7 +125,8 @@ export default function ToMarkdownApp() {
   return (
     <main className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans p-6 md:p-12 transition-colors duration-300">
 
-      <Toaster position="bottom-right" richColors theme={theme as any} />
+      {/* Forzamos el tipado correcto de Next Themes para el Toaster */}
+      <Toaster position="bottom-right" richColors theme={theme as "light" | "dark" | "system"} />
 
       <div className="absolute top-6 right-6 md:top-12 md:right-12 min-h-[38px] min-w-[38px]">
         {mounted && (
@@ -228,6 +232,8 @@ export default function ToMarkdownApp() {
             </div>
 
             <div className="p-6 overflow-auto max-h-[600px] bg-[#1E1E1E]">
+              {/* Silenciamos los tipos específicos de react-markdown que causan conflicto */}
+              {/* eslint-disable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */}
               <ReactMarkdown
                 components={{
                   code({ node, inline, className, children, ...props }: any) {
@@ -257,6 +263,7 @@ export default function ToMarkdownApp() {
               >
                 {markdown}
               </ReactMarkdown>
+              {/* eslint-enable @typescript-eslint/no-explicit-any, @typescript-eslint/no-unused-vars */}
             </div>
           </section>
         )}
