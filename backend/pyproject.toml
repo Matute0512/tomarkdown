@@ -9,9 +9,11 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.141.1",
+    "pydantic-settings>=2.0.0",
     "pypdf>=6.16.2",
     "python-docx>=1.2.0",
     "python-multipart>=0.0.32",
+    "slowapi>=0.1.9",
     "uvicorn>=0.52.4",
 ]
 
@@ -21,9 +23,15 @@ backend = "backend:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.0",
     "pytest>=9.1.1",
     "ruff>=0.16.4",
 ]
+
+[tool.pytest.ini_options]
+# El backend asyncio se selecciona vía la fixture `anyio_backend` en tests/conftest.py
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.uv]
 package = false
