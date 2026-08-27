@@ -68,6 +68,34 @@ def _make_sample_pdf_with_table() -> bytes:
     return buffer.getvalue()
 
 
+def _make_docx_with_table() -> bytes:
+    """DOCX con párrafo, tabla y párrafo para validar el orden intercalado."""
+    buffer = io.BytesIO()
+    doc = Document()
+    doc.add_heading("Encabezado", level=1)
+    doc.add_paragraph("Parrafo antes de la tabla.")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Nombre"
+    table.cell(0, 1).text = "Edad"
+    table.cell(1, 0).text = "Ana"
+    table.cell(1, 1).text = "25"
+    doc.add_paragraph("Parrafo despues de la tabla.")
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def _make_docx_with_soft_break() -> bytes:
+    """DOCX con un soft break (<w:br/>) dentro de un párrafo."""
+    buffer = io.BytesIO()
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("Hola")
+    p.add_run().add_break()
+    p.add_run("Mundo")
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
 @pytest.mark.anyio
 async def test_health_check(client: AsyncClient) -> None:
     response = await client.get("/")
@@ -121,6 +149,45 @@ async def test_convert_pdf_preserves_table(client: AsyncClient) -> None:
     assert "Matias" in table_lines[-1] and "Buenos Aires" in table_lines[-1]
     assert any("---" in ln for ln in table_lines)
     assert data["token_count"] > 0
+
+
+@pytest.mark.anyio
+async def test_convert_docx_interleaves_table_and_paragraphs(
+    client: AsyncClient,
+) -> None:
+    docx_bytes = _make_docx_with_table()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("estructura.docx", docx_bytes, DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    md = response.json()["markdown"]
+
+    # El orden del documento se respeta: texto, tabla GFM, texto.
+    antes = md.index("Parrafo antes")
+    tabla = md.index("| Nombre |")
+    despues = md.index("Parrafo despues")
+    assert antes < tabla < despues
+    assert "| Nombre | Edad |" in md
+    assert "| --- | --- |" in md
+    assert "| Ana | 25 |" in md
+
+
+@pytest.mark.anyio
+async def test_convert_docx_preserves_soft_break(client: AsyncClient) -> None:
+    docx_bytes = _make_docx_with_soft_break()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("saltos.docx", docx_bytes, DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    md = response.json()["markdown"]
+    # El soft break ya no pega el texto contiguo ("Hola" + "Mundo").
+    assert "HolaMundo" not in md
+    assert "Hola" in md
+    assert "Mundo" in md
 
 
 @pytest.mark.anyio
