@@ -23,6 +23,7 @@ function formatBytes(bytes: number, decimals = 2) {
 export default function ToMarkdownApp() {
   const [file, setFile] = useState<File | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
+  const [tokenCount, setTokenCount] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
 
@@ -39,6 +40,7 @@ export default function ToMarkdownApp() {
     if (acceptedFiles.length > 0) {
       setFile(acceptedFiles[0]);
       setMarkdown("");
+      setTokenCount(null);
     }
   }, []);
 
@@ -62,7 +64,8 @@ export default function ToMarkdownApp() {
     setIsLoading(true);
     try {
       const result = await convertDocumentToMarkdown(file);
-      setMarkdown(result);
+      setMarkdown(result.markdown);
+      setTokenCount(result.token_count);
       toast.success("¡Documento convertido con éxito!");
     } catch (err) {
       // Casteamos el error explícitamente para TypeScript
@@ -122,6 +125,7 @@ export default function ToMarkdownApp() {
     e.stopPropagation();
     setFile(null);
     setMarkdown("");
+    setTokenCount(null);
   };
 
   return (
@@ -212,7 +216,12 @@ export default function ToMarkdownApp() {
               <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 flex items-center">
                 Resultado Markdown
               </span>
-              <div className="flex space-x-2">
+              <div className="flex space-x-2 items-center">
+                {tokenCount !== null && (
+                  <span className="inline-flex items-center font-mono text-xs text-neutral-500 dark:text-neutral-400 bg-neutral-200 dark:bg-neutral-700/70 px-2.5 py-1 rounded-full whitespace-nowrap">
+                    ≈ {tokenCount.toLocaleString("es-AR")} tokens
+                  </span>
+                )}
                 <button
                   onClick={handleReset}
                   className="flex items-center px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"

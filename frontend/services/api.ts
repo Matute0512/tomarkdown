@@ -15,10 +15,16 @@ export class ConversionError extends Error {
   }
 }
 
+export interface ConversionResult {
+  markdown: string;
+  token_count: number;
+}
+
 /**
- * Envía el archivo al backend de FastAPI y devuelve el Markdown resultante.
+ * Envía el archivo al backend de FastAPI y devuelve el Markdown resultante
+ * junto con el conteo de tokens.
  */
-export async function convertDocumentToMarkdown(file: File): Promise<string> {
+export async function convertDocumentToMarkdown(file: File): Promise<ConversionResult> {
   const formData = new FormData();
   formData.append("file", file);
 
@@ -36,8 +42,8 @@ export async function convertDocumentToMarkdown(file: File): Promise<string> {
       );
     }
 
-    const data = await response.json();
-    return data.markdown;
+    const data = (await response.json()) as ConversionResult;
+    return data;
 
   } catch (error) {
     if (error instanceof ConversionError) {

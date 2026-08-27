@@ -51,7 +51,9 @@ async def test_convert_docx_happy_path(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    assert "# Titulo de Prueba" in response.json()["markdown"]
+    data = response.json()
+    assert "# Titulo de Prueba" in data["markdown"]
+    assert data["token_count"] > 0
 
 
 @pytest.mark.anyio
@@ -63,7 +65,9 @@ async def test_convert_pdf_happy_path(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    assert "Hola ToMarkdown" in response.json()["markdown"]
+    data = response.json()
+    assert "Hola ToMarkdown" in data["markdown"]
+    assert data["token_count"] > 0
 
 
 @pytest.mark.anyio
@@ -95,9 +99,10 @@ async def test_convert_pptx_happy_path(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    markdown = response.json()["markdown"]
-    assert "# Diapositiva Uno" in markdown
-    assert "- Punto de ejemplo" in markdown
+    data = response.json()
+    assert "# Diapositiva Uno" in data["markdown"]
+    assert "- Punto de ejemplo" in data["markdown"]
+    assert data["token_count"] > 0
 
 
 @pytest.mark.anyio
@@ -108,7 +113,9 @@ async def test_convert_txt_happy_path(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    assert "Hola desde txt" in response.json()["markdown"]
+    data = response.json()
+    assert "Hola desde txt" in data["markdown"]
+    assert data["token_count"] > 0
 
 
 @pytest.mark.anyio
@@ -121,7 +128,9 @@ async def test_convert_txt_latin1_encoding(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 200
-    assert "Café" in response.json()["markdown"]
+    data = response.json()
+    assert "Café" in data["markdown"]
+    assert data["token_count"] > 0
 
 
 @pytest.mark.anyio
