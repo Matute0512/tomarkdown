@@ -1,3 +1,4 @@
+import os
 from typing import Annotated
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
@@ -15,12 +16,20 @@ app = FastAPI(
     version="1.0.0",
 )
 
+
+def _parse_cors_origins(raw: str | None) -> list[str]:
+    """Convierte la variable CORS_ORIGINS (separada por comas) en una lista.
+
+    Si la variable no está definida, usa los orígenes de desarrollo local.
+    """
+    if not raw:
+        return ["http://localhost:3000", "http://192.168.182.1:3000"]
+    return [origin.strip() for origin in raw.split(",") if origin.strip()]
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://192.168.182.1:3000",  # Agregamos tu IP de red local
-    ],
+    allow_origins=_parse_cors_origins(os.getenv("CORS_ORIGINS")),
     allow_credentials=True,
     allow_methods=["POST"],
     allow_headers=["*"],

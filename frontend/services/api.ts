@@ -1,4 +1,11 @@
 /**
+ * URL base de la API backend.
+ * Configurable vía NEXT_PUBLIC_API_URL (se inyecta en el build de Next.js).
+ * Por defecto apunta al backend local de desarrollo.
+ */
+const API_BASE_URL = (process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000").replace(/\/+$/, "");
+
+/**
  * Excepción personalizada para manejar errores de la API en el frontend.
  */
 export class ConversionError extends Error {
@@ -16,7 +23,7 @@ export async function convertDocumentToMarkdown(file: File): Promise<string> {
   formData.append("file", file);
 
   try {
-    const response = await fetch("http://localhost:8000/api/v1/convert", {
+    const response = await fetch(`${API_BASE_URL}/api/v1/convert`, {
       method: "POST",
       body: formData,
     });
