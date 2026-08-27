@@ -13,6 +13,8 @@ from docx.oxml.ns import qn
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from app.core.omml import omml_to_latex
+
 _HEADING_MAX_LEVEL = 6
 
 
@@ -35,6 +37,9 @@ def parse_docx_to_markdown(file_stream: io.BytesIO) -> str:
             block = _table_to_markdown(table)
             if block:
                 blocks.append(block)
+        elif child.tag == qn("m:oMathPara"):
+            # Ecuación display: bloque propio encerrado en doble dólar.
+            blocks.append(f"$${omml_to_latex(child)}$$")
         # w:sectPr y demás nodos estructurales se ignoran.
 
     return _normalize_markdown("\n\n".join(blocks))
@@ -75,7 +80,10 @@ def _inline_node_markdown(node) -> str:
         return "\n"
     if node.tag == qn("w:tab"):
         return "\t"
-    # w:pPr, m:oMath, bookmarks… no aportan texto en este paso.
+    if node.tag == qn("m:oMath"):
+        # Ecuación inline: LaTeX entre signos de dólar.
+        return f"${omml_to_latex(node)}$"
+    # w:pPr, m:oMathPara, bookmarks… no aportan texto inline.
     return ""
 
 
