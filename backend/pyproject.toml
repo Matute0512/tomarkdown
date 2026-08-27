@@ -21,9 +21,15 @@ backend = "backend:main"
 
 [dependency-groups]
 dev = [
+    "httpx>=0.28.0",
     "pytest>=9.1.1",
     "ruff>=0.16.4",
 ]
+
+[tool.pytest.ini_options]
+# El backend asyncio se selecciona vía la fixture `anyio_backend` en tests/conftest.py
+pythonpath = ["."]
+testpaths = ["tests"]
 
 [tool.uv]
 package = false
