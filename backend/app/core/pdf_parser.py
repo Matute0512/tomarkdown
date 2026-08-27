@@ -22,6 +22,6 @@ def parse_pdf_to_markdown(file_stream: io.BytesIO) -> str:
 
         if text:
             # Agregamos un delimitador de página como encabezado H2
-            markdown_lines.append(f"## Página {i+1}\n\n{text.strip()}\n")
+            markdown_lines.append(f"## Página {i + 1}\n\n{text.strip()}\n")
 
     return "\n".join(markdown_lines)

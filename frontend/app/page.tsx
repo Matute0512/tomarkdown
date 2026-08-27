@@ -1,114 +1,193 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useDropzone } from "react-dropzone";
-import { UploadCloud, FileText, FileWarning, Copy, Check, Loader2 } from "lucide-react";
+import { UploadCloud, FileText, Copy, Check, Loader2, Moon, Sun, X, RefreshCcw } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
+import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { Toaster, toast } from "sonner";
+import { useTheme } from "next-themes";
 import { convertDocumentToMarkdown } from "../services/api";
+
+// Utilidad para formatear el peso del archivo a KB/MB
+function formatBytes(bytes: number, decimals = 2) {
+  if (!+bytes) return "0 Bytes";
+  const k = 1024;
+  const dm = decimals < 0 ? 0 : decimals;
+  const sizes = ["Bytes", "KB", "MB", "GB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+}
 
 export default function ToMarkdownApp() {
   const [file, setFile] = useState<File | null>(null);
   const [markdown, setMarkdown] = useState<string>("");
   const [isLoading, setIsLoading] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
 
-  // Configuración de react-dropzone
+  const [mounted, setMounted] = useState(false);
+  const { theme, setTheme, resolvedTheme } = useTheme();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
-    setError(null);
     if (acceptedFiles.length > 0) {
       setFile(acceptedFiles[0]);
-      setMarkdown(""); // Limpiar resultado anterior
+      setMarkdown("");
     }
   }, []);
 
   const { getRootProps, getInputProps, isDragActive, isDragReject } = useDropzone({
     onDrop,
     maxFiles: 1,
-    maxSize: 10 * 1024 * 1024, // 10 MB (Debe coincidir con nuestro backend)
+    maxSize: 10 * 1024 * 1024,
     accept: {
       "application/pdf": [".pdf"],
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document": [".docx"],
     },
+    onDropRejected: () => {
+      toast.error("Archivo no soportado o excede los 10MB.");
+    }
   });
 
   const handleConvert = async () => {
     if (!file) return;
-
     setIsLoading(true);
-    setError(null);
-
     try {
       const result = await convertDocumentToMarkdown(file);
       setMarkdown(result);
+      toast.success("¡Documento convertido con éxito!");
     } catch (err: any) {
-      setError(err.message || "Error desconocido");
+      toast.error(err.message || "Error desconocido al procesar el archivo");
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     if (!markdown) return;
-    navigator.clipboard.writeText(markdown);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+
+    // 1. Intento con la API moderna (Funciona en HTTPS y localhost)
+    if (navigator?.clipboard?.writeText) {
+      try {
+        await navigator.clipboard.writeText(markdown);
+        setCopied(true);
+        toast.success("¡Copiado al portapapeles!");
+        setTimeout(() => setCopied(false), 2000);
+        return;
+      } catch (err) {
+        console.error("Falló la API moderna del portapapeles: ", err);
+      }
+    }
+
+    // 2. Fallback clásico para HTTP en redes locales (ej. tu IP 192.x.x.x)
+    try {
+      const textArea = document.createElement("textarea");
+      textArea.value = markdown;
+
+      // Evitar que el navegador haga scroll al inyectar el textarea
+      textArea.style.top = "0";
+      textArea.style.left = "0";
+      textArea.style.position = "fixed";
+      textArea.style.opacity = "0";
+
+      document.body.appendChild(textArea);
+      textArea.focus();
+      textArea.select();
+
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textArea);
+
+      if (successful) {
+        setCopied(true);
+        toast.success("¡Copiado al portapapeles! (Modo LAN)");
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        toast.error("Tu navegador bloqueó el acceso al portapapeles.");
+      }
+    } catch (err) {
+      toast.error("Error inesperado al intentar copiar el texto.");
+    }
+  };
+
+  const handleReset = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setFile(null);
+    setMarkdown("");
   };
 
   return (
-    <main className="min-h-screen bg-neutral-50 text-neutral-900 font-sans p-6 md:p-12">
-      <div className="max-w-4xl mx-auto space-y-8">
+    <main className="min-h-screen bg-neutral-50 dark:bg-neutral-950 text-neutral-900 dark:text-neutral-100 font-sans p-6 md:p-12 transition-colors duration-300">
 
-        {/* Cabecera */}
+      <Toaster position="bottom-right" richColors theme={theme as any} />
+
+      <div className="absolute top-6 right-6 md:top-12 md:right-12 min-h-[38px] min-w-[38px]">
+        {mounted && (
+          <button
+            onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+            className="p-2 rounded-full bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700 transition-all shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            aria-label="Alternar tema"
+          >
+            {resolvedTheme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+        )}
+      </div>
+
+      <div className="max-w-4xl mx-auto space-y-8 mt-12 md:mt-4">
+
         <header className="text-center space-y-2">
-          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900">
-            ToMarkdown<span className="text-blue-600">.com</span>
+          <h1 className="text-4xl font-extrabold tracking-tight text-neutral-900 dark:text-white">
+            ToMarkdown<span className="text-blue-600 dark:text-blue-500">.com.ar</span>
           </h1>
-          <p className="text-neutral-500 text-lg">
+          <p className="text-neutral-500 dark:text-neutral-400 text-lg">
             Convierte tus archivos PDF y Word a Markdown al instante.
           </p>
         </header>
 
-        {/* Zona de Dropzone */}
         <section
           {...getRootProps()}
           className={`relative border-2 border-dashed rounded-xl p-10 flex flex-col items-center justify-center text-center cursor-pointer transition-colors
-            ${isDragActive ? "border-blue-500 bg-blue-50" : "border-neutral-300 hover:bg-neutral-100 bg-white"}
-            ${isDragReject ? "border-red-500 bg-red-50" : ""}
+            ${isDragActive ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20" : "border-neutral-300 dark:border-neutral-700 hover:bg-neutral-100 dark:hover:bg-neutral-800 bg-white dark:bg-neutral-900"}
+            ${isDragReject ? "border-red-500 bg-red-50 dark:bg-red-900/20" : ""}
           `}
         >
           <input {...getInputProps()} />
-          <UploadCloud className={`w-12 h-12 mb-4 ${isDragActive ? "text-blue-500" : "text-neutral-400"}`} />
+          <UploadCloud className={`w-12 h-12 mb-4 transition-transform ${isDragActive ? "text-blue-500 scale-110" : "text-neutral-400 dark:text-neutral-500"}`} />
 
           {file ? (
-            <div className="flex items-center space-x-2 text-green-700 font-medium">
-              <FileText className="w-5 h-5" />
-              <span>{file.name}</span>
+            <div className="flex items-center space-x-4 bg-green-50 dark:bg-green-900/10 px-4 py-3 rounded-lg border border-green-200 dark:border-green-800 shadow-sm animate-in zoom-in-95 duration-200">
+              <FileText className="w-6 h-6 text-green-700 dark:text-green-500 flex-shrink-0" />
+              <div className="flex flex-col text-left overflow-hidden">
+                <span className="text-sm font-semibold text-green-800 dark:text-green-300 truncate max-w-[200px] md:max-w-xs">{file.name}</span>
+                <span className="text-xs text-green-600 dark:text-green-500/80">{formatBytes(file.size)}</span>
+              </div>
+              <button
+                onClick={handleReset}
+                className="ml-2 p-1.5 hover:bg-green-200 dark:hover:bg-green-800/50 rounded-full transition-colors focus:outline-none"
+                title="Quitar archivo"
+              >
+                <X className="w-4 h-4 text-green-700 dark:text-green-400" />
+              </button>
             </div>
           ) : (
-            <p className="text-neutral-600 font-medium">
+            <p className="text-neutral-600 dark:text-neutral-300 font-medium">
               Arrastra y suelta tu archivo aquí, o haz clic para seleccionar
             </p>
           )}
-          <p className="text-sm text-neutral-400 mt-2">Soporta .pdf y .docx (Max 10MB)</p>
+          <p className="text-sm text-neutral-400 dark:text-neutral-500 mt-3">Soporta .pdf y .docx (Max 10MB)</p>
         </section>
 
-        {/* Errores visuales */}
-        {error && (
-          <div className="flex items-center p-4 text-red-800 bg-red-100 rounded-lg">
-            <FileWarning className="w-5 h-5 mr-2 flex-shrink-0" />
-            <p>{error}</p>
-          </div>
-        )}
-
-        {/* Botón de Acción */}
         <div className="flex justify-center">
           <button
             onClick={(e) => {
-              e.stopPropagation(); // Evitar que el click se propague al dropzone
+              e.stopPropagation();
               handleConvert();
             }}
             disabled={!file || isLoading}
-            className="flex items-center justify-center px-8 py-3 text-white bg-neutral-900 rounded-lg font-semibold hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all"
+            className="flex items-center justify-center px-8 py-3 text-white dark:text-neutral-900 bg-neutral-900 dark:bg-white rounded-lg font-semibold hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed transition-all active:scale-95"
           >
             {isLoading ? (
               <>
@@ -121,26 +200,63 @@ export default function ToMarkdownApp() {
           </button>
         </div>
 
-        {/* Vista previa del Resultado */}
         {markdown && (
-          <section className="bg-white border border-neutral-200 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
-            <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 border-b border-neutral-200">
-              <span className="text-sm font-semibold text-neutral-600">Resultado Markdown</span>
-              <button
-                onClick={handleCopy}
-                className="flex items-center text-sm font-medium text-neutral-700 hover:text-blue-600 transition-colors"
-              >
-                {copied ? (
-                  <><Check className="w-4 h-4 mr-1 text-green-600" /> ¡Copiado!</>
-                ) : (
-                  <><Copy className="w-4 h-4 mr-1" /> Copiar al portapapeles</>
-                )}
-              </button>
+          <section className="bg-white dark:bg-neutral-900 border border-neutral-200 dark:border-neutral-800 rounded-xl overflow-hidden shadow-sm animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex justify-between items-center px-4 py-3 bg-neutral-100 dark:bg-neutral-800/50 border-b border-neutral-200 dark:border-neutral-800">
+              <span className="text-sm font-semibold text-neutral-600 dark:text-neutral-400 flex items-center">
+                Resultado Markdown
+              </span>
+              <div className="flex space-x-2">
+                <button
+                  onClick={handleReset}
+                  className="flex items-center px-2 py-1 text-sm font-medium text-neutral-500 dark:text-neutral-400 hover:text-red-600 dark:hover:text-red-400 transition-colors"
+                  title="Limpiar resultado"
+                >
+                  <RefreshCcw className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={handleCopy}
+                  className="flex items-center px-3 py-1 text-sm font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md hover:bg-neutral-50 dark:hover:bg-neutral-700 transition-colors"
+                >
+                  {copied ? (
+                    <><Check className="w-4 h-4 mr-1.5 text-green-600 dark:text-green-400" /> Copiado</>
+                  ) : (
+                    <><Copy className="w-4 h-4 mr-1.5" /> Copiar</>
+                  )}
+                </button>
+              </div>
             </div>
-            <div className="p-4 overflow-auto max-h-[500px]">
-              <pre className="text-sm text-neutral-800 whitespace-pre-wrap font-mono">
+
+            <div className="p-6 overflow-auto max-h-[600px] bg-[#1E1E1E]">
+              <ReactMarkdown
+                components={{
+                  code({ node, inline, className, children, ...props }: any) {
+                    const match = /language-(\w+)/.exec(className || "");
+                    return !inline && match ? (
+                      <SyntaxHighlighter
+                        style={vscDarkPlus as any}
+                        language={match[1]}
+                        PreTag="div"
+                        {...props}
+                      >
+                        {String(children).replace(/\n$/, "")}
+                      </SyntaxHighlighter>
+                    ) : (
+                      <code className="bg-neutral-800 text-blue-300 px-1.5 py-0.5 rounded-md text-sm" {...props}>
+                        {children}
+                      </code>
+                    );
+                  },
+                  h1: ({node, ...props}) => <h1 className="text-3xl font-bold text-white mb-4 mt-6 border-b border-neutral-700 pb-2" {...props} />,
+                  h2: ({node, ...props}) => <h2 className="text-2xl font-semibold text-white mb-3 mt-5 border-b border-neutral-700 pb-1" {...props} />,
+                  h3: ({node, ...props}) => <h3 className="text-xl font-medium text-white mb-3 mt-4" {...props} />,
+                  p: ({node, ...props}) => <p className="text-neutral-300 mb-4 leading-relaxed" {...props} />,
+                  ul: ({node, ...props}) => <ul className="list-disc list-inside text-neutral-300 mb-4" {...props} />,
+                  ol: ({node, ...props}) => <ol className="list-decimal list-inside text-neutral-300 mb-4" {...props} />,
+                }}
+              >
                 {markdown}
-              </pre>
+              </ReactMarkdown>
             </div>
           </section>
         )}
