@@ -72,3 +72,18 @@ async def test_convert_rejects_file_over_10mb(client: AsyncClient) -> None:
     )
 
     assert response.status_code == 413
+
+
+@pytest.mark.anyio
+async def test_rate_limit_returns_429(client: AsyncClient) -> None:
+    pdf_bytes = (FIXTURES_DIR / "sample.pdf").read_bytes()
+    files = {"file": ("sample.pdf", pdf_bytes, "application/pdf")}
+
+    # Las 10 primeras conversiones del minuto pasan…
+    for _ in range(10):
+        response = await client.post("/api/v1/convert", files=files)
+        assert response.status_code == 200
+
+    # …la 11ª supera el límite (10/minute) y responde 429.
+    response = await client.post("/api/v1/convert", files=files)
+    assert response.status_code == 429

@@ -20,3 +20,10 @@ async def client() -> AsyncIterator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter() -> None:
+    """Limpia el storage del rate limiter para que cada test arranque en cero."""
+    app.state.limiter.reset()
+    yield
