@@ -5,8 +5,11 @@ from pathlib import Path
 
 import pytest
 from docx import Document
+from docx.oxml import parse_xml
 from httpx import AsyncClient
 from pptx import Presentation
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen.canvas import Canvas
 
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 DOCX_MIME = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -32,6 +35,93 @@ def _make_sample_pptx() -> bytes:
     slide.shapes.title.text_frame.text = "Diapositiva Uno"
     slide.placeholders[1].text_frame.text = "Punto de ejemplo"
     prs.save(buffer)
+    return buffer.getvalue()
+
+
+def _make_sample_pdf_with_table() -> bytes:
+    """Genera un PDF en memoria con una tabla dibujada a mano (canvas).
+
+    reportlab.Table no sirve como fixture: su GRID no genera líneas
+    vectoriales detectables por pymupdf.find_tables(), y la conversión
+    quedaría como texto plano. Dibujando las celdas con canvas, PyMuPDF
+    detecta la tabla y pymupdf4llm la convierte a Markdown GFM.
+    """
+    buffer = io.BytesIO()
+    c = Canvas(buffer, pagesize=letter)
+
+    # Celdas 3x2: líneas verticales (columnas) y horizontales (filas).
+    col_x = [50, 120, 180, 250]
+    row_y = [760, 720, 680]
+    for x in col_x:
+        c.line(x, row_y[0], x, row_y[-1])
+    for y in row_y:
+        c.line(col_x[0], y, col_x[-1], y)
+
+    c.drawString(55, 740, "Nombre")
+    c.drawString(125, 740, "Edad")
+    c.drawString(185, 740, "Ciudad")
+    c.drawString(55, 700, "Matias")
+    c.drawString(125, 700, "30")
+    c.drawString(185, 700, "Buenos Aires")
+
+    c.showPage()
+    c.save()
+    return buffer.getvalue()
+
+
+def _make_docx_with_table() -> bytes:
+    """DOCX con párrafo, tabla y párrafo para validar el orden intercalado."""
+    buffer = io.BytesIO()
+    doc = Document()
+    doc.add_heading("Encabezado", level=1)
+    doc.add_paragraph("Parrafo antes de la tabla.")
+    table = doc.add_table(rows=2, cols=2)
+    table.cell(0, 0).text = "Nombre"
+    table.cell(0, 1).text = "Edad"
+    table.cell(1, 0).text = "Ana"
+    table.cell(1, 1).text = "25"
+    doc.add_paragraph("Parrafo despues de la tabla.")
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def _make_docx_with_soft_break() -> bytes:
+    """DOCX con un soft break (<w:br/>) dentro de un párrafo."""
+    buffer = io.BytesIO()
+    doc = Document()
+    p = doc.add_paragraph()
+    p.add_run("Hola")
+    p.add_run().add_break()
+    p.add_run("Mundo")
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+M_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"
+
+
+def _o_math(content: str) -> str:
+    """Envuelve contenido OMML en un m:oMath inline con su namespace."""
+    return f'<m:oMath xmlns:m="{M_NS}">{content}</m:oMath>'
+
+
+def _docx_with_inline_math(omml_xml: str) -> bytes:
+    """DOCX con una ecuación OMML inline inyectada en un párrafo."""
+    buffer = io.BytesIO()
+    doc = Document()
+    p = doc.add_paragraph()
+    p._element.append(parse_xml(omml_xml))
+    doc.save(buffer)
+    return buffer.getvalue()
+
+
+def _docx_with_display_math(omml_xml: str) -> bytes:
+    """DOCX con una ecuación OMML de bloque inyectada en el cuerpo."""
+    buffer = io.BytesIO()
+    doc = Document()
+    doc.add_paragraph("Texto previo a la formula.")
+    doc.element.body.append(parse_xml(omml_xml))
+    doc.save(buffer)
     return buffer.getvalue()
 
 
@@ -68,6 +158,156 @@ async def test_convert_pdf_happy_path(client: AsyncClient) -> None:
     data = response.json()
     assert "Hola ToMarkdown" in data["markdown"]
     assert data["token_count"] > 0
+
+
+@pytest.mark.anyio
+async def test_convert_pdf_preserves_table(client: AsyncClient) -> None:
+    pdf_bytes = _make_sample_pdf_with_table()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("tabla.pdf", pdf_bytes, "application/pdf")},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    md = data["markdown"]
+
+    table_lines = [ln for ln in md.splitlines() if ln.strip().startswith("|")]
+    assert table_lines, "la tabla no se convirtió a GFM"
+    assert "Nombre" in table_lines[0] and "Ciudad" in table_lines[0]
+    assert "Matias" in table_lines[-1] and "Buenos Aires" in table_lines[-1]
+    assert any("---" in ln for ln in table_lines)
+    assert data["token_count"] > 0
+
+
+@pytest.mark.anyio
+async def test_convert_docx_interleaves_table_and_paragraphs(
+    client: AsyncClient,
+) -> None:
+    docx_bytes = _make_docx_with_table()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("estructura.docx", docx_bytes, DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    md = response.json()["markdown"]
+
+    # El orden del documento se respeta: texto, tabla GFM, texto.
+    antes = md.index("Parrafo antes")
+    tabla = md.index("| Nombre |")
+    despues = md.index("Parrafo despues")
+    assert antes < tabla < despues
+    assert "| Nombre | Edad |" in md
+    assert "| --- | --- |" in md
+    assert "| Ana | 25 |" in md
+
+
+@pytest.mark.anyio
+async def test_convert_docx_preserves_soft_break(client: AsyncClient) -> None:
+    docx_bytes = _make_docx_with_soft_break()
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("saltos.docx", docx_bytes, DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    md = response.json()["markdown"]
+    # El soft break ya no pega el texto contiguo ("Hola" + "Mundo").
+    assert "HolaMundo" not in md
+    assert "Hola" in md
+    assert "Mundo" in md
+
+
+@pytest.mark.anyio
+async def test_convert_docx_math_superscript(client: AsyncClient) -> None:
+    xml = _o_math(
+        "<m:sSup>"
+        "<m:e><m:r><m:t>x</m:t></m:r></m:e>"
+        "<m:sup><m:r><m:t>2</m:t></m:r></m:sup>"
+        "</m:sSup>"
+    )
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("matematica.docx", _docx_with_inline_math(xml), DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    assert "{x}^{2}" in response.json()["markdown"]
+
+
+@pytest.mark.anyio
+async def test_convert_docx_math_nary_sum(client: AsyncClient) -> None:
+    # chr(0x2211) fija el codepoint de ∑ de forma inequívoca.
+    xml = _o_math(
+        f"<m:nary><m:naryPr><m:chr m:val='{chr(0x2211)}'/></m:naryPr>"
+        "<m:sub><m:r><m:t>i=1</m:t></m:r></m:sub>"
+        "<m:sup><m:r><m:t>n</m:t></m:r></m:sup>"
+        "<m:e><m:r><m:t>x</m:t></m:r></m:e>"
+        "</m:nary>"
+    )
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("suma.docx", _docx_with_inline_math(xml), DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    assert "\\sum_{i=1}^{n}" in response.json()["markdown"]
+
+
+@pytest.mark.anyio
+async def test_convert_docx_math_display_fraction(client: AsyncClient) -> None:
+    xml = (
+        f'<m:oMathPara xmlns:m="{M_NS}"><m:oMath>'
+        "<m:f>"
+        "<m:num><m:r><m:t>a</m:t></m:r></m:num>"
+        "<m:den><m:r><m:t>b</m:t></m:r></m:den>"
+        "</m:f>"
+        "</m:oMath></m:oMathPara>"
+    )
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("fraccion.docx", _docx_with_display_math(xml), DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    md = response.json()["markdown"]
+    assert "$$\\frac{a}{b}$$" in md
+    assert md.index("Texto previo") < md.index("$$")
+
+
+@pytest.mark.anyio
+async def test_convert_docx_math_unsupported_degrades_to_plain_text(
+    client: AsyncClient,
+) -> None:
+    # Matriz (m:m): constructo no soportado → degrada a texto plano sin crash.
+    xml = _o_math(
+        "<m:m>"
+        "<m:mr><m:e><m:r><m:t>1</m:t></m:r></m:e>"
+        "<m:e><m:r><m:t>2</m:t></m:r></m:e></m:mr>"
+        "<m:mr><m:e><m:r><m:t>3</m:t></m:r></m:e>"
+        "<m:e><m:r><m:t>4</m:t></m:r></m:e></m:mr>"
+        "</m:m>"
+    )
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("matriz.docx", _docx_with_inline_math(xml), DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    assert "1234" in response.json()["markdown"]
+
+
+@pytest.mark.anyio
+async def test_convert_docx_math_greek_unicode(client: AsyncClient) -> None:
+    xml = _o_math(f"<m:r><m:t>{chr(0x03B1)}</m:t></m:r>")
+    response = await client.post(
+        "/api/v1/convert",
+        files={"file": ("griego.docx", _docx_with_inline_math(xml), DOCX_MIME)},
+    )
+
+    assert response.status_code == 200
+    assert "\\alpha" in response.json()["markdown"]
 
 
 @pytest.mark.anyio
